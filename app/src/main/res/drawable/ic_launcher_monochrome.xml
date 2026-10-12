@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- bar -->
+    <path android:fillColor="#FFFFFF" android:pathData="M31,45.5h46a1.5,1.5 0 0 1 1.5,1.5v3a1.5,1.5 0 0 1 -1.5,1.5h-46a1.5,1.5 0 0 1 -1.5,-1.5v-3a1.5,1.5 0 0 1 1.5,-1.5z"/>
+    <!-- end caps -->
+    <path android:fillColor="#FFFFFF" android:pathData="M24,44.5h4v8h-4a1,1 0 0 1 -1,-1v-6a1,1 0 0 1 1,-1z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M80,44.5h4a1,1 0 0 1 1,1v6a1,1 0 0 1 -1,1h-4z"/>
+    <!-- outer plates -->
+    <path android:fillColor="#FFFFFF" android:pathData="M29.5,37h4a1.5,1.5 0 0 1 1.5,1.5v20a1.5,1.5 0 0 1 -1.5,1.5h-4a1.5,1.5 0 0 1 -1.5,-1.5v-20a1.5,1.5 0 0 1 1.5,-1.5z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M74.5,37h4a1.5,1.5 0 0 1 1.5,1.5v20a1.5,1.5 0 0 1 -1.5,1.5h-4a1.5,1.5 0 0 1 -1.5,-1.5v-20a1.5,1.5 0 0 1 1.5,-1.5z"/>
+    <!-- inner plates (orange) -->
+    <path android:fillColor="#FFFFFF" android:pathData="M38,31h5a2,2 0 0 1 2,2v31a2,2 0 0 1 -2,2h-5a2,2 0 0 1 -2,-2v-31a2,2 0 0 1 2,-2z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M65,31h5a2,2 0 0 1 2,2v31a2,2 0 0 1 -2,2h-5a2,2 0 0 1 -2,-2v-31a2,2 0 0 1 2,-2z"/>
+    <!-- progress trend line -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M35,80 L46,73 L55,77 L69,70"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M74.5,67 L65.5,66.2 L70.2,74.6 Z"/>
+</vector>

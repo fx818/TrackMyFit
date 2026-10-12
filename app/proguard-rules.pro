@@ -1,0 +1,4 @@
+-keepattributes *Annotation*, InnerClasses
+-keep,includedescriptorclasses class com.trackmyfit.app.data.**$$serializer { *; }
+-keepclassmembers class com.trackmyfit.app.data.** { *** Companion; }
+-keepclasseswithmembers class com.trackmyfit.app.data.** { kotlinx.serialization.KSerializer serializer(...); }
