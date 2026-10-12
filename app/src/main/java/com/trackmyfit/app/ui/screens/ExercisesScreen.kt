@@ -14,6 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trackmyfit.app.data.*
 import com.trackmyfit.app.ui.*
 import com.trackmyfit.app.ui.components.*
+import androidx.compose.ui.graphics.asImageBitmap
 
 /** Maps a day label to muscle groups, used to pre-filter the exercise picker. */
 fun groupsForLabels(labels: List<String>): Set<String> = labels.flatMap { l ->
@@ -66,7 +70,10 @@ fun ExercisePickerDialog(
     val usage = remember(data) { Stats.usageCounts(data) }
     val all = remember(data.customExercises) { data.allExercises() }
     val list = remember(all, query, groups, usage) {
-        all.filter { (groups.isEmpty() || it.muscleGroup in groups) && matches(it, query) }
+        // A search query looks through every exercise; the muscle-group filter only applies when browsing
+        // (or when you tap group chips yourself while searching).
+        val inGroups = all.filter { (groups.isEmpty() || it.muscleGroup in groups) && matches(it, query) }
+        (if (query.isNotBlank() && inGroups.isEmpty()) all.filter { matches(it, query) } else inGroups)
             .sortedWith(compareByDescending<Exercise> { usage[it.id] ?: 0 }.thenBy { it.name })
     }
 
@@ -104,7 +111,7 @@ fun ExercisePickerDialog(
                                     (if (e.id in alreadyAdded) " · already added" else ""))
                             },
                             trailingContent = { Checkbox(checked = isSel, onCheckedChange = null) },
-                            leadingContent = { if (e.isCustom) Icon(Icons.Filled.Person, "Custom") else Icon(Icons.Filled.FitnessCenter, null) },
+                            leadingContent = { ExerciseThumb(e) },
                             colors = if (isSel) ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) else ListItemDefaults.colors(),
                             modifier = Modifier.clickable { if (isSel) selected.remove(e.id) else selected.add(e.id) },
                         )
@@ -124,7 +131,7 @@ fun ExercisePickerDialog(
         ExerciseEditDialog(
             initial = null, initialName = query, initialGroup = groups.singleOrNull(),
             onDismiss = { showAdd = false },
-            onSave = { n, g, eq -> val id = vm.addCustomExercise(n, g, eq); selected.add(id); query = ""; groups = emptySet(); showAdd = false },
+            onSave = { n, g, eq, t -> val id = vm.addCustomExercise(n, g, eq, t); selected.add(id); query = ""; groups = emptySet(); showAdd = false },
         )
     }
 }
@@ -185,7 +192,7 @@ fun ExercisesScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
                     ListItem(
                         headlineContent = { Text(e.name) },
                         supportingContent = { Text(listOf(e.muscleGroup, e.equipment).filter { it.isNotBlank() }.joinToString(" · ")) },
-                        leadingContent = { if (e.isCustom) Icon(Icons.Filled.Person, "Custom") else Icon(Icons.Filled.FitnessCenter, null) },
+                        leadingContent = { ExerciseThumb(e) },
                         trailingContent = { if (n > 0) Text("$n×", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold) },
                         modifier = Modifier.clickable { onOpen(e.id) },
                     )
@@ -194,8 +201,8 @@ fun ExercisesScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
         }
     }
     if (showAdd) {
-        ExerciseEditDialog(initial = null, initialName = query, initialGroup = groups.singleOrNull(), onDismiss = { showAdd = false }) { n, g, eq ->
-            vm.addCustomExercise(n, g, eq); showAdd = false
+        ExerciseEditDialog(initial = null, initialName = query, initialGroup = groups.singleOrNull(), onDismiss = { showAdd = false }) { n, g, eq, t ->
+            vm.addCustomExercise(n, g, eq, t); showAdd = false
         }
     }
 }
@@ -207,11 +214,12 @@ fun ExerciseEditDialog(
     initialName: String = "",
     initialGroup: String? = null,
     onDismiss: () -> Unit,
-    onSave: (String, String, String) -> Unit,
+    onSave: (String, String, String, TrackType) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: initialName) }
     var group by remember { mutableStateOf(initial?.muscleGroup ?: initialGroup ?: Catalog.muscleGroups.first()) }
     var equipment by remember { mutableStateOf(initial?.equipment ?: "") }
+    var trackType by remember { mutableStateOf(initial?.trackType ?: TrackType.WEIGHT_REPS) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "New exercise" else "Edit exercise") },
@@ -222,9 +230,16 @@ fun ExerciseEditDialog(
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                SectionTitle("Track by")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TrackType.entries.forEach { t -> FilterChip(selected = t == trackType, onClick = { trackType = t }, label = { Text(t.label) }) }
+                }
                 SectionTitle("Muscle group")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Catalog.muscleGroups.forEach { g -> FilterChip(selected = g == group, onClick = { group = g }, label = { Text(g) }) }
+                    Catalog.muscleGroups.forEach { g -> FilterChip(selected = g == group, onClick = {
+                        group = g
+                        if (initial == null && g == "Cardio" && trackType == TrackType.WEIGHT_REPS) trackType = TrackType.DISTANCE_TIME
+                    }, label = { Text(g) }) }
                 }
                 SectionTitle("Equipment")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -232,7 +247,26 @@ fun ExerciseEditDialog(
                 }
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, group, equipment) }) { Text("Save") } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, group, equipment, trackType) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+fun ExerciseThumb(e: Exercise) {
+    val ctx = LocalContext.current
+    val demo = remember(e.id) { hasDemo(ctx, e.id) }
+    if (demo) {
+        var bmp by remember(e.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        LaunchedEffect(e.id) { bmp = ExerciseInfoRepo.frame(ctx, e.id, 1, 160) }
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+            bmp?.let {
+                androidx.compose.foundation.Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            } ?: Icon(Icons.Filled.FitnessCenter, null)
+        }
+    } else {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Icon(if (e.isCustom) Icons.Filled.Person else if (e.trackType == TrackType.WEIGHT_REPS) Icons.Filled.FitnessCenter else Icons.Filled.Timer, if (e.isCustom) "Custom" else null)
+        }
+    }
 }

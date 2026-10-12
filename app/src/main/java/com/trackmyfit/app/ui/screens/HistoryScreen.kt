@@ -88,7 +88,7 @@ fun HistoryScreen(vm: MainViewModel, onOpenDay: (LocalDate) -> Unit) {
                             }
                             if (d.hasWorkout) {
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("${Stats.setCount(d)} sets", style = MaterialTheme.typography.labelMedium)
+                                    Text("${Stats.setCount(d)} sets" + (d.durationMinutes?.let { " · " + fmtMinutes(it) } ?: ""), style = MaterialTheme.typography.labelMedium)
                                     Text(fmtVolume(Stats.volumeKg(d), unit), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -96,13 +96,19 @@ fun HistoryScreen(vm: MainViewModel, onOpenDay: (LocalDate) -> Unit) {
                         if (d.entries.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
                             d.entries.forEach { e ->
-                                val best = e.sets.maxByOrNull { it.weightKg }
+                                val ex = exMap[e.exerciseId]
+                                val working = e.sets.filter { it.isWorking }
+                                val summary = when {
+                                    working.isEmpty() -> "—"
+                                    (ex?.trackType ?: TrackType.WEIGHT_REPS) == TrackType.WEIGHT_REPS -> {
+                                        val top = working.maxOf { it.weightKg }
+                                        "${working.size} sets" + if (top > 0) " · top ${fmtWeight(top, unit)}" else " · ${working.sumOf { it.reps }} reps"
+                                    }
+                                    else -> "${working.size} × " + fmtSetShort(working.maxBy { it.durationSec + it.distanceKm * 1000 }, ex!!.trackType, unit)
+                                }
                                 Row {
-                                    Text(exMap[e.exerciseId]?.name ?: "Deleted", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(
-                                        if (best == null) "—" else "${e.sets.size} × · top ${fmtWeight(best.weightKg, unit)}",
-                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    Text(ex?.name ?: "Deleted", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

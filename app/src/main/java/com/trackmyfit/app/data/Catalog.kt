@@ -16,7 +16,7 @@ object Catalog {
         "Push", "Pull", "Upper Body", "Lower Body", "Full Body", "Cardio", "Rest",
     )
 
-    val defaultExercises: List<Exercise> = listOf(
+    private val raw: List<Exercise> = listOf(
         // Chest
         Exercise("b_barbell_bench_press", "Barbell Bench Press", "Chest", "Barbell"),
         Exercise("b_incline_barbell_bench_press", "Incline Barbell Bench Press", "Chest", "Barbell"),
@@ -173,4 +173,19 @@ object Catalog {
         Exercise("b_battle_ropes", "Battle Ropes", "Full Body", "Other"),
         Exercise("b_sled_push", "Sled Push", "Full Body", "Other"),
     )
+
+    private val timeIds = setOf(
+        "b_plank", "b_side_plank", "b_dead_hang", "b_battle_ropes", "b_mountain_climber", "b_jump_rope", "b_stair_climber",
+    )
+    private val distanceIds = setOf(
+        "b_treadmill", "b_stationary_bike", "b_rowing_machine", "b_elliptical", "b_running", "b_cycling",
+    )
+
+    val defaultExercises: List<Exercise> = raw.map {
+        when (it.id) {
+            in timeIds -> it.copy(trackType = TrackType.TIME)
+            in distanceIds -> it.copy(trackType = TrackType.DISTANCE_TIME)
+            else -> it
+        }
+    }
 }

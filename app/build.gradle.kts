@@ -13,8 +13,8 @@ android {
         applicationId = "com.trackmyfit.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -38,6 +38,7 @@ android {
         )
     }
     buildFeatures { compose = true }
+    androidResources { noCompress += "webp" }
 }
 
 dependencies {
@@ -53,4 +54,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("androidx.health.connect:connect-client:1.1.0-beta01")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

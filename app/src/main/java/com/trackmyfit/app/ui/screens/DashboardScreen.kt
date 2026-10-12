@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingFlat
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,12 +42,17 @@ fun DashboardScreen(
     onOpenBody: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenExercise: (String) -> Unit,
+    onOpenSteps: () -> Unit,
+    showWeightDialog: Boolean = false,
+    onWeightDialogShown: () -> Unit = {},
 ) {
     val data by vm.data.collectAsStateWithLifecycle()
+    val stepsState by vm.stepsState.collectAsStateWithLifecycle()
     val unit = data.settings.unit
     val today = LocalDate.now()
     val exMap = remember(data.customExercises) { data.exerciseMap() }
     var showWeight by remember { mutableStateOf(false) }
+    LaunchedEffect(showWeightDialog) { if (showWeightDialog) { showWeight = true; onWeightDialogShown() } }
 
     Scaffold(
         topBar = {
@@ -68,6 +74,7 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item { TodayCard(data, today, exMap, onOpenLog) }
+            item { GoalsRow(data, today, stepsState, onOpenSteps) }
             item { QuickStats(data, today, unit) }
             item { BodyCard(data, unit, onLogWeight = { showWeight = true }, onOpenBody = onOpenBody) }
             item { WeightTrendCard(data, unit, onLogWeight = { showWeight = true }) }
@@ -139,14 +146,14 @@ private fun TodayCard(data: AppData, today: LocalDate, exMap: Map<String, Exerci
 @Composable
 private fun QuickStats(data: AppData, today: LocalDate, unit: WeightUnit) {
     val weekStart = today.with(DayOfWeek.MONDAY)
-    val thisWeek = Stats.workoutsBetween(data, weekStart, today)
     val streak = Stats.currentStreak(data, today)
     val vols = Stats.weeklyVolumeKg(data, 2, today)
     val total = Stats.totalWorkouts(data)
     // Compare against last week only once this week has some volume (avoids "-100%" every Monday).
     val volChange = if (vols[0].second > 0 && vols[1].second > 0) (vols[1].second - vols[0].second) / vols[0].second * 100 else null
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("This week", "$thisWeek", Icons.Filled.CalendarMonth, Modifier.width(120.dp), sub = "workouts")
+        val durs = data.days.values.filter { LocalDate.parse(it.date) >= today.minusDays(30) }.mapNotNull { it.durationMinutes }
+        if (durs.isNotEmpty()) StatCard("Avg duration", fmtMinutes(durs.average().toInt()), Icons.Filled.Timer, Modifier.width(130.dp), sub = "last 30 days")
         StatCard("Streak", "$streak", Icons.Filled.LocalFireDepartment, Modifier.width(120.dp), sub = if (streak == 1) "day" else "days")
         StatCard("Week volume", fmtVolume(vols[1].second, unit), Icons.Filled.FitnessCenter, Modifier.width(150.dp),
             sub = volChange?.let { (if (it >= 0) "+" else "") + "%.0f%% vs last week".format(it) } ?: "lifted")
@@ -411,6 +418,77 @@ private fun RecentPrsCard(data: AppData, exMap: Map<String, Exercise>, unit: Wei
                     Text(fmtLongDate(pr.date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("${fmtWeight(pr.weightKg, unit)} × ${pr.reps}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalsRow(data: AppData, today: LocalDate, steps: MainViewModel.StepsState, onOpenSteps: () -> Unit) {
+    val goal = data.settings.weeklyGoal.coerceAtLeast(1)
+    val done = Stats.workoutsThisWeek(data, today)
+    Row(Modifier.height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ElevatedCard(Modifier.weight(1f).fillMaxHeight()) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                ProgressRing(done / goal.toFloat(), size = 96.dp) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$done/$goal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("workouts", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when {
+                        done >= goal -> "Weekly goal hit! 🎉"
+                        else -> "${goal - done} more this week"
+                    },
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                )
+                // Mon..Sun dots
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val monday = today.with(DayOfWeek.MONDAY)
+                    (0..6).forEach { i ->
+                        val d = monday.plusDays(i.toLong())
+                        val dd = data.days[d.toString()]
+                        val c = when {
+                            dd?.hasWorkout == true -> MaterialTheme.colorScheme.primary
+                            dd?.labels?.any { it.equals("Rest", true) } == true -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+                            else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(c))
+                            Text(d.dayOfWeek.getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault()),
+                                style = MaterialTheme.typography.labelSmall, color = if (d == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        ElevatedCard(onClick = onOpenSteps, modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Column(Modifier.fillMaxSize().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                val stepGoal = data.settings.stepGoal.coerceAtLeast(1)
+                val count = steps.today ?: data.stepsCache?.takeIf { it.date == today.toString() }?.steps
+                if (steps.permitted && count != null) {
+                    ProgressRing(count / stepGoal.toFloat(), size = 96.dp, color = Color(0xFF3DBE7A)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(java.text.NumberFormat.getIntegerInstance().format(count), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("steps", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (count >= stepGoal) "Step goal reached! 🎉" else "${java.text.NumberFormat.getIntegerInstance().format(stepGoal - count)} to go",
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                    )
+                    Text("Goal ${java.text.NumberFormat.getIntegerInstance().format(stepGoal)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) {
+                        Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, Modifier.size(48.dp), tint = Color(0xFF3DBE7A))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Step tracking", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text("Tap to connect", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }

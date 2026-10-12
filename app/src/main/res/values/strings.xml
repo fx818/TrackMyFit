@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">TrackMyFit</string>
+    <string name="widget_desc">Today\'s workout, streak, weekly goal and steps</string>
 </resources>
