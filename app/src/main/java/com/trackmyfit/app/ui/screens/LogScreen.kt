@@ -2,6 +2,7 @@ package com.trackmyfit.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +40,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 @Composable
-fun LogScreen(vm: MainViewModel, onOpenExercise: (String) -> Unit, onOpenRoutines: () -> Unit) {
+fun LogScreen(vm: MainViewModel, onOpenExercise: (String) -> Unit, onOpenRoutines: () -> Unit, onGymMode: () -> Unit) {
     val data by vm.data.collectAsStateWithLifecycle()
     val date by vm.selectedDate.collectAsStateWithLifecycle()
     val rest by vm.restRemaining.collectAsStateWithLifecycle()
@@ -47,6 +49,7 @@ fun LogScreen(vm: MainViewModel, onOpenExercise: (String) -> Unit, onOpenRoutine
     val exMap = remember(data.customExercises) { data.exerciseMap() }
     val unit = data.settings.unit
     val today = LocalDate.now()
+    val letters = remember(day.entries) { groupLetters(day.entries) }
 
     var showPicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -99,11 +102,20 @@ fun LogScreen(vm: MainViewModel, onOpenExercise: (String) -> Unit, onOpenRoutine
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showPicker = true },
-                icon = { Icon(Icons.Filled.Add, null) },
-                text = { Text("Add exercise") },
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (day.entries.isNotEmpty()) {
+                    SmallFloatingActionButton(onClick = { showPicker = true }) { Icon(Icons.Filled.Add, "Add exercise") }
+                    ExtendedFloatingActionButton(
+                        onClick = onGymMode,
+                        icon = { Icon(Icons.Filled.PlayArrow, null) },
+                        text = { Text("Gym mode") },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    ExtendedFloatingActionButton(onClick = { showPicker = true }, icon = { Icon(Icons.Filled.Add, null) }, text = { Text("Add exercise") })
+                }
+            }
         },
         bottomBar = {
             AnimatedVisibility(rest != null) {
@@ -158,9 +170,16 @@ fun LogScreen(vm: MainViewModel, onOpenExercise: (String) -> Unit, onOpenRoutine
                 val best = remember(data, date, entry.exerciseId) { Stats.bestWeightBefore(data, entry.exerciseId, date) }
                 val sugg = remember(data, date, entry) { Stats.suggest(data, ex, entry, date, unit) }
                 val idx = day.entries.indexOf(entry)
+                val groupPos = if (entry.group.isEmpty()) null else {
+                    val members = day.entries.filter { it.group == entry.group }
+                    Triple(letters[entry.group] ?: 'A', members.indexOfFirst { it.id == entry.id }, members.size)
+                }
                 EntryCard(
                     entry = entry, exercise = ex, prev = prev, bestBefore = best, suggestion = sugg, unit = unit,
                     canMoveUp = idx > 0, canMoveDown = idx < day.entries.lastIndex,
+                    groupPos = groupPos,
+                    onLinkNext = { vm.linkWithNext(date, entry.id) },
+                    onUnlink = { vm.unlinkEntry(date, entry.id) },
                     onAddSet = {
                         val last = entry.sets.lastOrNull()
                         val template: WorkoutSet = when {
@@ -417,14 +436,41 @@ private fun EntryCard(
     onHistory: () -> Unit,
     onHowTo: () -> Unit,
     onPlates: (Double) -> Unit,
+    groupPos: Triple<Char, Int, Int>? = null,
+    onLinkNext: () -> Unit = {},
+    onUnlink: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val type = exercise?.trackType ?: TrackType.WEIGHT_REPS
     val demo = remember(entry.exerciseId) { hasDemo(ctx, entry.exerciseId) }
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
-    ElevatedCard(Modifier.fillMaxWidth()) {
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+    if (groupPos != null) {
+        // Superset bracket: drawn (not measured) so it can extend into the 12dp gap to the next card.
+        val last = groupPos.second == groupPos.third - 1
+        val first = groupPos.second == 0
+        Box(Modifier.width(22.dp).fillMaxHeight().drawBehind {
+            val w = 4.dp.toPx()
+            val x = (size.width - w) / 2f
+            val extra = if (last) 0f else 12.dp.toPx()
+            drawRoundRect(
+                tertiary, topLeft = androidx.compose.ui.geometry.Offset(x, 0f),
+                size = androidx.compose.ui.geometry.Size(w, size.height + extra),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(if (first || last) w / 2 else 0f),
+            )
+        })
+        Spacer(Modifier.width(4.dp))
+    }
+    ElevatedCard(Modifier.weight(1f)) {
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)) {
+            if (groupPos != null) {
+                Text(
+                    (if (groupPos.third >= 3) "CIRCUIT " else "SUPERSET ") + "${groupPos.first}${groupPos.second + 1}",
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = tertiary,
+                )
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (demo) {
                     Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onHowTo)) {
@@ -454,6 +500,11 @@ private fun EntryCard(
                                 menu = false; onPlates(entry.sets.lastOrNull()?.weightKg ?: suggestion?.weightKg ?: entry.targetWeightKg)
                             })
                         }
+                        if (canMoveDown) DropdownMenuItem(
+                            text = { Text(if (groupPos != null) "Add next exercise to superset" else "Superset with next") },
+                            leadingIcon = { Icon(Icons.Filled.Link, null) }, onClick = { menu = false; onLinkNext() },
+                        )
+                        if (groupPos != null) DropdownMenuItem(text = { Text("Remove from superset") }, leadingIcon = { Icon(Icons.Filled.LinkOff, null) }, onClick = { menu = false; onUnlink() })
                         if (canMoveUp) DropdownMenuItem(text = { Text("Move up") }, leadingIcon = { Icon(Icons.Filled.ArrowUpward, null) }, onClick = { menu = false; onMove(true) })
                         if (canMoveDown) DropdownMenuItem(text = { Text("Move down") }, leadingIcon = { Icon(Icons.Filled.ArrowDownward, null) }, onClick = { menu = false; onMove(false) })
                         DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Filled.Delete, null) }, onClick = {
@@ -519,6 +570,7 @@ private fun EntryCard(
             }
             TextButton(onClick = onAddSet) { Icon(Icons.Filled.Add, null); Spacer(Modifier.width(4.dp)); Text(if (entry.sets.isEmpty()) "Log sets" else "Add set") }
         }
+    }
     }
     if (confirmRemove) {
         AlertDialog(

@@ -133,31 +133,40 @@ fun ProgressRing(
 // ---------------------------------------------------------------- exercise demo
 
 /**
- * Animated demo: smoothly cross-fades between the start and end position photos,
- * holding on each, so it reads like a slow-motion rep. Tap to pause.
+ * Animated demo. Photo demos play their frames start -> end -> start, cross-fading between
+ * neighbouring frames and holding briefly on the start and end positions (2 frames = simple
+ * cross-fade, 5 frames = smoother motion). Exercises without photos fall back to the
+ * vector stick-figure animation from poses.json. Tap to pause.
  */
 @Composable
 fun ExerciseDemo(exerciseId: String, modifier: Modifier = Modifier, maxWidth: Int = 480, showControls: Boolean = true) {
     val ctx = LocalContext.current
     val info = remember(exerciseId) { ExerciseInfoRepo.get(ctx, exerciseId) }
     val count = info?.images ?: 0
-    var frames by remember(exerciseId) { mutableStateOf<List<Bitmap>>(emptyList()) }
-    LaunchedEffect(exerciseId, count) {
-        frames = (0 until count).mapNotNull { ExerciseInfoRepo.frame(ctx, exerciseId, it, maxWidth) }
+    if (count == 0) {
+        val pose = remember(exerciseId) { PoseRepo.get(ctx, exerciseId) }
+        if (pose != null) PoseAnimation(pose, modifier, showControls)
+        return
     }
-    if (count == 0) return
+    var frames by remember(exerciseId) { mutableStateOf<List<Bitmap>>(emptyList()) }
+    LaunchedEffect(exerciseId, count, maxWidth) {
+        // Thumbnails only need start/end; full demos load every frame.
+        val idx = if (maxWidth < 300 && count > 2) listOf(0, count - 1) else (0 until count).toList()
+        frames = idx.mapNotNull { ExerciseInfoRepo.frame(ctx, exerciseId, it, maxWidth) }
+    }
     var playing by remember { mutableStateOf(true) }
     val transition = rememberInfiniteTransition(label = "demo")
+    // Phase 0..1..0: hold at start, move to end, hold, move back.
     val t by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = keyframes {
-                durationMillis = 3200
+                durationMillis = 3600
                 0f at 0
-                0f at 700 using FastOutSlowInEasing
-                1f at 1600 using FastOutSlowInEasing
-                1f at 2300 using FastOutSlowInEasing
-                0f at 3200
+                0f at 600 using LinearEasing
+                1f at 1800 using FastOutSlowInEasing
+                1f at 2400 using LinearEasing
+                0f at 3600 using FastOutSlowInEasing
             },
         ),
         label = "phase",
@@ -175,9 +184,13 @@ fun ExerciseDemo(exerciseId: String, modifier: Modifier = Modifier, maxWidth: In
         if (frames.isEmpty()) {
             CircularProgressIndicator(Modifier.align(Alignment.Center))
         } else {
-            Image(frames[0].asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            if (frames.size > 1) {
-                Image(frames[1].asImageBitmap(), null, Modifier.fillMaxSize().alpha(phase), contentScale = ContentScale.Crop)
+            val pos = phase * (frames.size - 1)
+            val i = pos.toInt().coerceIn(0, frames.size - 1)
+            val next = (i + 1).coerceAtMost(frames.size - 1)
+            val f = pos - i
+            Image(frames[i].asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (next != i && f > 0.001f) {
+                Image(frames[next].asImageBitmap(), null, Modifier.fillMaxSize().alpha(f), contentScale = ContentScale.Crop)
             }
         }
         if (showControls && frames.size > 1) {
@@ -189,7 +202,10 @@ fun ExerciseDemo(exerciseId: String, modifier: Modifier = Modifier, maxWidth: In
             ) {
                 Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(if (phase < 0.5f) "Start" else "Finish", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    when { phase < 0.15f -> "Start"; phase > 0.85f -> "Finish"; else -> "Moving" },
+                    color = Color.White, style = MaterialTheme.typography.labelSmall,
+                )
             }
         }
     }
@@ -200,9 +216,12 @@ fun ExerciseInfoContent(exercise: Exercise, modifier: Modifier = Modifier, showD
     val ctx = LocalContext.current
     val info = remember(exercise.id) { ExerciseInfoRepo.get(ctx, exercise.id) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (showDemo && (info?.images ?: 0) > 0) {
+        if (showDemo && hasDemo(ctx, exercise.id)) {
             ExerciseDemo(exercise.id)
-            Text("Tap the demo to pause", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if ((info?.images ?: 0) > 0) "Tap the demo to pause" else "Animated guide · tap to pause",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (info == null) {
             Text(
@@ -264,7 +283,8 @@ fun HowToSheet(exercise: Exercise, onDismiss: () -> Unit) {
     }
 }
 
-fun hasDemo(ctx: android.content.Context, exerciseId: String): Boolean = (ExerciseInfoRepo.get(ctx, exerciseId)?.images ?: 0) > 0
+fun hasDemo(ctx: android.content.Context, exerciseId: String): Boolean =
+    (ExerciseInfoRepo.get(ctx, exerciseId)?.images ?: 0) > 0 || PoseRepo.get(ctx, exerciseId) != null
 
 // ---------------------------------------------------------------- plate calculator
 

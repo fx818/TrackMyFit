@@ -149,7 +149,7 @@ object Stats {
         val big = ex.muscleGroup in setOf("Legs", "Glutes", "Back") && ex.equipment in setOf("Barbell", "Machine", "Smith Machine")
         return if (unit == WeightUnit.KG) when {
             big -> 5.0
-            ex.equipment == "Dumbbell" -> 2.0
+            ex.equipment == "Dumbbell" -> 2.5
             ex.equipment == "Kettlebell" -> 4.0
             else -> 2.5
         } else Units.fromDisplay(if (big) 10.0 else 5.0, unit)

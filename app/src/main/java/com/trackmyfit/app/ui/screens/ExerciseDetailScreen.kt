@@ -66,6 +66,19 @@ fun ExerciseDetailScreen(vm: MainViewModel, exerciseId: String, onBack: () -> Un
             }
             if (tab == 0) {
                 item { ExerciseInfoContent(ex) }
+                item {
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    val (pm, sm) = remember(ex.id) { Muscles.forExercise(ex, ExerciseInfoRepo.get(ctx, ex.id)) }
+                    if (pm.isNotEmpty() || sm.isNotEmpty()) {
+                        ElevatedCard {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("Muscles worked", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                BodyHeatmap(pm.associateWith { 1f } + sm.associateWith { 0.35f }, height = 200.dp)
+                                Text("Dark = primary · light = secondary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
                 return@LazyColumn
             }
             if (history.isEmpty()) {

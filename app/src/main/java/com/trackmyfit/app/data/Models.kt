@@ -53,6 +53,8 @@ data class ExerciseEntry(
     val targetReps: Int = 0,
     val targetWeightKg: Double = 0.0,
     val targetDurationSec: Int = 0,
+    /** Entries sharing the same non-empty group id form a superset / circuit. */
+    val group: String = "",
 )
 
 @Serializable
@@ -87,6 +89,7 @@ data class RoutineItem(
     val reps: Int = 10,
     val weightKg: Double = 0.0,
     val durationSec: Int = 0,
+    val group: String = "",
 )
 
 @Serializable

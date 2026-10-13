@@ -39,6 +39,13 @@ fun NavHostController.switchTab(route: String) = navigate(route) {
     restoreState = true
 }
 
+/** Shows the Log tab itself (never a screen that was stacked on top of it earlier). */
+fun NavHostController.openLog() {
+    if (popBackStack("log", inclusive = false)) return
+    switchTab("log")
+    popBackStack("log", inclusive = false)
+}
+
 @Composable
 fun AppRoot(vm: MainViewModel) {
     val nav = rememberNavController()
@@ -60,13 +67,13 @@ fun AppRoot(vm: MainViewModel) {
     // Deep links from widget / notifications.
     LaunchedEffect(navRequest) {
         when (navRequest) {
-            "log" -> { vm.setDate(LocalDate.now()); nav.switchTab("log") }
+            "log" -> { vm.setDate(LocalDate.now()); nav.openLog() }
             "weight" -> { nav.switchTab("home"); openWeight = true }
         }
         if (navRequest != null) vm.consumeNav()
     }
 
-    val openDay: (LocalDate) -> Unit = { d -> vm.setDate(d); nav.switchTab("log") }
+    val openDay: (LocalDate) -> Unit = { d -> vm.setDate(d); nav.openLog() }
     val openExercise: (String) -> Unit = { nav.navigate("exercise/$it") }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -76,7 +83,7 @@ fun AppRoot(vm: MainViewModel) {
                     tabs.forEach { t ->
                         NavigationBarItem(
                             selected = route == t.route,
-                            onClick = { if (t.route == "log" && route != "log") vm.setDate(LocalDate.now()); nav.switchTab(t.route) },
+                            onClick = { if (t.route == "log") { if (route != "log") vm.setDate(LocalDate.now()); nav.openLog() } else nav.switchTab(t.route) },
                             icon = { Icon(t.icon, t.label) },
                             label = { Text(t.label, maxLines = 1) },
                         )
@@ -90,21 +97,24 @@ fun AppRoot(vm: MainViewModel) {
                 composable("home") {
                     DashboardScreen(
                         vm,
-                        onOpenLog = { vm.setDate(LocalDate.now()); nav.switchTab("log") },
+                        onOpenLog = { vm.setDate(LocalDate.now()); nav.openLog() },
                         onOpenBody = { nav.switchTab("body") },
                         onOpenSettings = { nav.navigate("settings") },
                         onOpenExercise = openExercise,
                         onOpenSteps = { nav.navigate("steps") },
+                        onOpenMuscleMap = { nav.navigate("musclemap") },
                         showWeightDialog = openWeight,
                         onWeightDialogShown = { openWeight = false },
                     )
                 }
-                composable("log") { LogScreen(vm, onOpenExercise = openExercise, onOpenRoutines = { nav.navigate("routines") }) }
+                composable("log") { LogScreen(vm, onOpenExercise = openExercise, onOpenRoutines = { nav.navigate("routines") }, onGymMode = { nav.navigate("gym") }) }
+                composable("gym") { GymModeScreen(vm, onExit = { nav.popBackStack() }, onOpenExercise = openExercise) }
+                composable("musclemap") { MuscleMapScreen(vm, onBack = { nav.popBackStack() }) }
                 composable("history") { HistoryScreen(vm, onOpenDay = openDay) }
                 composable("body") { BodyScreen(vm, onOpenPhotos = { nav.navigate("photos") }) }
                 composable("exercises") { ExercisesScreen(vm, onOpen = openExercise) }
                 composable("settings") { SettingsScreen(vm, onBack = { nav.popBackStack() }, onOpenSteps = { nav.navigate("steps") }) }
-                composable("routines") { RoutinesScreen(vm, onBack = { nav.popBackStack() }, onStarted = { nav.switchTab("log") }) }
+                composable("routines") { RoutinesScreen(vm, onBack = { nav.popBackStack() }, onStarted = { nav.openLog() }) }
                 composable("photos") { PhotosScreen(vm, onBack = { nav.popBackStack() }) }
                 composable("steps") { StepsScreen(vm, onBack = { nav.popBackStack() }) }
                 composable("exercise/{id}") { entry ->

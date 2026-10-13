@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -37,11 +38,16 @@ fun RoutinesScreen(vm: MainViewModel, onBack: () -> Unit, onStarted: () -> Unit)
     var editing by remember { mutableStateOf<Routine?>(null) }
     var confirmDelete by remember { mutableStateOf<Routine?>(null) }
     var startFor by remember { mutableStateOf<Routine?>(null) }
+    var programInfo by remember { mutableStateOf<Programs.Program?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    var snackMsg by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(snackMsg) { snackMsg?.let { snackbar.showSnackbar(it); snackMsg = null } }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Routines") },
+                title = { Text("Routines & programs") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
@@ -50,10 +56,30 @@ fun RoutinesScreen(vm: MainViewModel, onBack: () -> Unit, onStarted: () -> Unit)
         },
     ) { padding ->
         LazyColumn(contentPadding = PaddingValues(16.dp, padding.calculateTopPadding(), 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { SectionTitle("Ready-made programs") }
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Programs.all.forEach { pr ->
+                        val added = pr.routines.all { r -> data.routines.any { it.id == r.id } }
+                        ElevatedCard(onClick = { programInfo = pr }, modifier = Modifier.width(220.dp)) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(pr.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${pr.level} · ${pr.daysPerWeek}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(4.dp))
+                                Text(pr.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(6.dp))
+                                if (added) Text("✓ Added", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                                else Text("${pr.routines.size} routines", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+            item { SectionTitle("My routines") }
             if (data.routines.isEmpty()) {
                 item {
                     EmptyState(Icons.AutoMirrored.Filled.ListAlt, "No routines yet",
-                        "Create one here, or log a workout and use ⋮ → \"Save as routine\" on the Log screen.")
+                        "Add a ready-made program above, create one here, or log a workout and use ⋮ → \"Save as routine\" on the Log screen.")
                 }
             }
             items(data.routines, key = { it.id }) { r ->
@@ -68,9 +94,11 @@ fun RoutinesScreen(vm: MainViewModel, onBack: () -> Unit, onStarted: () -> Unit)
                             IconButton(onClick = { confirmDelete = r }) { Icon(Icons.Filled.DeleteOutline, "Delete") }
                         }
                         Spacer(Modifier.height(4.dp))
+                        val rLetters = groupLettersOf(r.items.map { it.group })
                         r.items.forEach { it2 ->
                             val ex = exMap[it2.exerciseId]
                             Row {
+                                if (it2.group.isNotEmpty()) Text("${rLetters[it2.group]} ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
                                 Text(ex?.name ?: "Deleted", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(describeItem(it2, ex, unit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -83,6 +111,40 @@ fun RoutinesScreen(vm: MainViewModel, onBack: () -> Unit, onStarted: () -> Unit)
                 }
             }
         }
+    }
+    programInfo?.let { pr ->
+        AlertDialog(
+            onDismissRequest = { programInfo = null },
+            title = { Text(pr.name) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${pr.level} · ${pr.daysPerWeek}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    Text(pr.description)
+                    Text("Schedule: ${pr.schedule}", style = MaterialTheme.typography.bodySmall)
+                    pr.routines.forEach { r ->
+                        HorizontalDivider()
+                        Text(r.name, fontWeight = FontWeight.Bold)
+                        val rl = groupLettersOf(r.items.map { it.group })
+                        r.items.forEach { it2 ->
+                            val ex = exMap[it2.exerciseId]
+                            Text(
+                                (if (it2.group.isNotEmpty()) "${rl[it2.group]}  " else "•  ") + (ex?.name ?: it2.exerciseId) + "  —  " + describeItem(it2, ex, unit),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    Text("Letters (A, B) mark supersets: do those exercises back-to-back, then rest.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val n = vm.addProgram(pr)
+                    snackMsg = if (n > 0) "Added ${pr.name} ($n routines)" else "${pr.name} routines refreshed"
+                    programInfo = null
+                }) { Text(if (pr.routines.all { r -> data.routines.any { it.id == r.id } }) "Reset to default" else "Add to my routines") }
+            },
+            dismissButton = { TextButton(onClick = { programInfo = null }) { Text("Close") } },
+        )
     }
     editing?.let { r -> RoutineEditor(vm, data, r, onDismiss = { editing = null }) { vm.saveRoutine(it); editing = null } }
     confirmDelete?.let { r ->
@@ -153,14 +215,40 @@ private fun RoutineEditor(vm: MainViewModel, data: AppData, initial: Routine, on
                     item { SectionTitle("Exercises (${items.size})") }
                     itemsIndexed(items, key = { i, it -> "$i-${it.exerciseId}" }) { i, it2 ->
                         val ex = exMap[it2.exerciseId]
+                        val el = groupLettersOf(items.map { it.group })
                         OutlinedCard(Modifier.fillMaxWidth().clickable { editIdx = i }) {
                             Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
+                                    if (it2.group.isNotEmpty()) Text("Superset ${el[it2.group]}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
                                     Text(ex?.name ?: "Deleted", fontWeight = FontWeight.SemiBold)
                                     Text(describeItem(it2, ex, unit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (i > 0) IconButton(onClick = { val t = items[i]; items[i] = items[i - 1]; items[i - 1] = t }) { Icon(Icons.Filled.ArrowUpward, "Up") }
-                                IconButton(onClick = { items.removeAt(i) }) { Icon(Icons.Filled.Close, "Remove") }
+                                if (i < items.lastIndex) {
+                                    val linked = it2.group.isNotEmpty() && items[i + 1].group == it2.group
+                                    IconButton(onClick = {
+                                        val list = items.toMutableList()
+                                        if (linked) {
+                                            // split the group after this item
+                                            val g = newId().take(8)
+                                            var k = i + 1
+                                            while (k < list.size && list[k].group == it2.group) { list[k] = list[k].copy(group = g); k++ }
+                                        } else {
+                                            val g = it2.group.ifEmpty { items[i + 1].group.ifEmpty { newId().take(8) } }
+                                            val old = list[i + 1].group
+                                            for (k in list.indices) if (k == i || k == i + 1 || (old.isNotEmpty() && list[k].group == old)) list[k] = list[k].copy(group = g)
+                                        }
+                                        val norm = normalizeGroups(list, { it.group }, { e, gg -> e.copy(group = gg) })
+                                        items.clear(); items.addAll(norm)
+                                    }) { Icon(if (linked) Icons.Filled.LinkOff else Icons.Filled.Link, if (linked) "Unlink from next" else "Superset with next", tint = if (linked) MaterialTheme.colorScheme.tertiary else LocalContentColor.current) }
+                                }
+                                if (i > 0) IconButton(onClick = {
+                                    val t = items[i]; items[i] = items[i - 1]; items[i - 1] = t
+                                    val norm = normalizeGroups(items.toList(), { it.group }, { e, gg -> e.copy(group = gg) }); items.clear(); items.addAll(norm)
+                                }) { Icon(Icons.Filled.ArrowUpward, "Up") }
+                                IconButton(onClick = {
+                                    items.removeAt(i)
+                                    val norm = normalizeGroups(items.toList(), { it.group }, { e, gg -> e.copy(group = gg) }); items.clear(); items.addAll(norm)
+                                }) { Icon(Icons.Filled.Close, "Remove") }
                             }
                         }
                     }
@@ -220,4 +308,10 @@ private fun RoutineEditor(vm: MainViewModel, data: AppData, initial: Routine, on
             dismissButton = { TextButton(onClick = { editIdx = null }) { Text("Cancel") } },
         )
     }
+}
+
+fun groupLettersOf(groups: List<String>): Map<String, Char> {
+    val m = LinkedHashMap<String, Char>()
+    groups.forEach { if (it.isNotEmpty() && it !in m) m[it] = 'A' + m.size }
+    return m
 }

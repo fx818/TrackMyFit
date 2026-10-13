@@ -43,6 +43,7 @@ fun DashboardScreen(
     onOpenSettings: () -> Unit,
     onOpenExercise: (String) -> Unit,
     onOpenSteps: () -> Unit,
+    onOpenMuscleMap: () -> Unit = {},
     showWeightDialog: Boolean = false,
     onWeightDialogShown: () -> Unit = {},
 ) {
@@ -81,7 +82,7 @@ fun DashboardScreen(
             item { WorkoutFrequencyCard(data, today) }
             item { VolumeCard(data, today, unit) }
             item { StrengthCard(data, exMap, unit, onOpenExercise) }
-            item { MuscleSplitCard(data, today, exMap) }
+            item { MuscleMapCard(data, onOpenMuscleMap) }
             item { RecentPrsCard(data, exMap, unit, onOpenExercise) }
         }
     }

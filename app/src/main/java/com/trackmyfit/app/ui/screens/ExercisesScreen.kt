@@ -258,7 +258,13 @@ fun ExerciseThumb(e: Exercise) {
     val demo = remember(e.id) { hasDemo(ctx, e.id) }
     if (demo) {
         var bmp by remember(e.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
-        LaunchedEffect(e.id) { bmp = ExerciseInfoRepo.frame(ctx, e.id, 1, 160) }
+        val n = remember(e.id) { ExerciseInfoRepo.get(ctx, e.id)?.images ?: 0 }
+        LaunchedEffect(e.id) { if (n > 0) bmp = ExerciseInfoRepo.frame(ctx, e.id, n - 1, 160) }
+        val pose = remember(e.id) { if (n == 0) PoseRepo.get(ctx, e.id) else null }
+        if (pose != null) {
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))) { PoseAnimation(pose, Modifier.fillMaxSize(), showControls = false) }
+            return
+        }
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
             bmp?.let {
                 androidx.compose.foundation.Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)

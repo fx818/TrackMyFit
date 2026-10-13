@@ -37,7 +37,17 @@ Progress photos are stored separately in `files/photos/`.
 - **Exercise demos:** an animated start/end demo with step-by-step form instructions, tips and muscles worked for 131 of the 143 exercises. The other 12 have written instructions only.
 - **Log several sets at once:** for example "3 sets × 10 reps @ 60 kg" in one step.
 
+### v1.2
+- **Gym Mode:** a full-screen view of one exercise at a time. Planned sets show as rows; you tap Done on each, and the weight and reps are filled in from your target or the suggestion. It has big +/− buttons, a large rest countdown, a strip for jumping between exercises, and keeps the screen on.
+- **Supersets and circuits:** link exercises on the Log screen (⋮ → Superset with next) or in the routine editor. A coloured bracket groups them. Gym Mode alternates between the exercises (A1 → A2 → A1…), and the rest timer only starts once the whole round is done.
+- **6 ready-made programs:** Full Body Beginner, Upper/Lower, Push/Pull/Legs, Bro Split, 5/3/1-style Strength, and Home/Bodyweight. Add one in a single tap and its routines (with supersets) show up under My routines.
+- **Muscle heatmap:** front and back body map coloured by working sets. A Dashboard card covers the last 7 days. The detail screen covers the week, 7 days or 30 days, shows sets per muscle against a ~10 sets/week target, and flags neglected muscles. Each exercise page also has a "muscles worked" diagram.
+- **Animated stick-figure guides** for the 12 exercises that have no photos (poses.json, drawn in code).
+- **Smoother 5-frame photo demos** for 8 exercises, using AI-generated in-between frames (RIFE). Every exercise was checked by eye. The other 123 failed that check (ghosting or double images) and keep their 2-photo demo.
+
 Exercise demo photos and most of the instructions come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), which is public domain (Unlicense).
+
+Muscle diagram shapes come from [react-body-highlighter](https://github.com/GV79/react-body-highlighter) (MIT). The in-between frames were generated with [RIFE ncnn](https://github.com/nihui/rife-ncnn-vulkan) (MIT).
 
 ## Build
 ```

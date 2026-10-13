@@ -32,6 +32,34 @@ import kotlin.math.ceil
 
 fun newId(): String = UUID.randomUUID().toString()
 
+/**
+ * Makes superset groups valid: a group must be a contiguous run of 2+ items.
+ * Single-member or split groups are cleared / re-labelled.
+ */
+fun <T> normalizeGroups(items: List<T>, groupOf: (T) -> String, withGroup: (T, String) -> T): List<T> {
+    val out = items.toMutableList()
+    var i = 0
+    val seen = HashSet<String>()
+    while (i < out.size) {
+        val g = groupOf(out[i])
+        if (g.isEmpty()) { i++; continue }
+        var j = i
+        while (j + 1 < out.size && groupOf(out[j + 1]) == g) j++
+        val runLen = j - i + 1
+        val label = if (g in seen) newId().take(8) else g
+        for (k in i..j) out[k] = withGroup(out[k], if (runLen >= 2) label else "")
+        seen += label
+        i = j + 1
+    }
+    return out
+}
+
+/** Gives every group in [items] a fresh unique id (so copied supersets don't merge with existing ones). */
+fun <T> remapGroups(items: List<T>, groupOf: (T) -> String, withGroup: (T, String) -> T): List<T> {
+    val m = HashMap<String, String>()
+    return items.map { val g = groupOf(it); if (g.isEmpty()) it else withGroup(it, m.getOrPut(g) { newId().take(8) }) }
+}
+
 fun AppData.allExercises(): List<Exercise> = Catalog.defaultExercises + customExercises
 fun AppData.exerciseMap(): Map<String, Exercise> = allExercises().associateBy { it.id }
 fun AppData.allLabels(): List<String> = Catalog.defaultLabels + customLabels.filter { c -> Catalog.defaultLabels.none { it.equals(c, true) } }
@@ -86,7 +114,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeEntry(date: LocalDate, entryId: String) = updateDay(date) { day ->
-        day.copy(entries = day.entries.filterNot { it.id == entryId })
+        day.copy(entries = normalizeGroups(day.entries.filterNot { it.id == entryId }, { it.group }, { e, gg -> e.copy(group = gg) }))
     }
 
     fun moveEntry(date: LocalDate, entryId: String, up: Boolean) = updateDay(date) { day ->
@@ -94,7 +122,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val i = list.indexOfFirst { it.id == entryId }
         val j = if (up) i - 1 else i + 1
         if (i >= 0 && j in list.indices) { val t = list[i]; list[i] = list[j]; list[j] = t }
-        day.copy(entries = list)
+        day.copy(entries = normalizeGroups(list, { it.group }, { e, gg -> e.copy(group = gg) }))
     }
 
     /** Adds [count] identical sets (e.g. 3 sets x 10 reps @ 60 kg). */
@@ -102,8 +130,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val n = count.coerceIn(1, 20)
         updateEntry(date, entryId) { e -> e.copy(sets = e.sets + List(n) { template.copy(id = newId()) }) }
         val s = data.value.settings
-        if (s.restTimerEnabled && date == LocalDate.now() && n == 1) startRest(s.restSeconds, exerciseName)
+        // In a superset, only rest once every exercise of the group has done this round.
+        val restNow = n == 1 && isRoundComplete(date, entryId)
+        if (s.restTimerEnabled && date == LocalDate.now() && restNow) startRest(s.restSeconds, exerciseName)
         if (date == LocalDate.now()) autoStartWorkoutTimer(date)
+    }
+
+    fun isRoundComplete(date: LocalDate, entryId: String): Boolean {
+        val entries = data.value.dayFor(date).entries
+        val e = entries.firstOrNull { it.id == entryId } ?: return true
+        if (e.group.isEmpty()) return true
+        val counts = entries.filter { it.group == e.group }.map { m -> m.sets.count { it.isWorking } }
+        return counts.all { it == counts.first() }
+    }
+
+    fun isLastInGroup(date: LocalDate, entryId: String): Boolean {
+        val entries = data.value.dayFor(date).entries
+        val e = entries.firstOrNull { it.id == entryId } ?: return true
+        if (e.group.isEmpty()) return true
+        return entries.last { it.group == e.group }.id == entryId
+    }
+
+    // ---------------- Supersets ----------------
+    /** Links an entry with the one below it (joining an existing superset if either is in one). */
+    fun linkWithNext(date: LocalDate, entryId: String) = updateDay(date) { day ->
+        val list = day.entries.toMutableList()
+        val i = list.indexOfFirst { it.id == entryId }
+        if (i < 0 || i >= list.lastIndex) return@updateDay day
+        val g = list[i].group.ifEmpty { list[i + 1].group.ifEmpty { newId().take(8) } }
+        val old = list[i + 1].group
+        for (k in list.indices) if (k == i || k == i + 1 || (old.isNotEmpty() && list[k].group == old)) list[k] = list[k].copy(group = g)
+        day.copy(entries = normalizeGroups(list, { it.group }, { e, gg -> e.copy(group = gg) }))
+    }
+
+    fun unlinkEntry(date: LocalDate, entryId: String) = updateDay(date) { day ->
+        val list = day.entries.map { if (it.id == entryId) it.copy(group = "") else it }
+        day.copy(entries = normalizeGroups(list, { it.group }, { e, gg -> e.copy(group = gg) }))
     }
 
     fun updateSet(date: LocalDate, entryId: String, set: WorkoutSet) =
@@ -124,10 +186,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         updateDay(to) { day ->
             day.copy(
                 labels = (day.labels + src.labels).distinctBy { it.lowercase() },
-                entries = day.entries + src.entries.map { e ->
+                entries = day.entries + remapGroups(src.entries, { it.group }, { e, g -> e.copy(group = g) }).map { e ->
                     val working = e.sets.filter { it.isWorking }
                     ExerciseEntry(
-                        newId(), e.exerciseId,
+                        newId(), e.exerciseId, group = e.group,
                         sets = if (withSets) e.sets.map { it.copy(id = newId()) } else emptyList(),
                         targetSets = working.size,
                         targetReps = working.maxOfOrNull { it.reps } ?: 0,
@@ -163,11 +225,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteRoutine(id: String) = repo.update { d -> d.copy(routines = d.routines.filterNot { it.id == id }) }
 
+    /** Adds (or refreshes) all routines of a ready-made program. Returns how many were added. */
+    fun addProgram(p: Programs.Program): Int {
+        var added = 0
+        repo.update { d ->
+            val existing = d.routines.associateBy { it.id }
+            added = p.routines.count { it.id !in existing }
+            val updated = d.routines.map { r -> p.routines.firstOrNull { it.id == r.id } ?: r }
+            d.copy(routines = updated + p.routines.filter { it.id !in existing })
+        }
+        return added
+    }
+
     fun startRoutine(r: Routine, date: LocalDate) = updateDay(date) { day ->
         day.copy(
             labels = (day.labels + r.labels).distinctBy { it.lowercase() },
-            entries = day.entries + r.items.map {
-                ExerciseEntry(newId(), it.exerciseId, targetSets = it.sets, targetReps = it.reps, targetWeightKg = it.weightKg, targetDurationSec = it.durationSec)
+            entries = day.entries + remapGroups(r.items, { it.group }, { e, g -> e.copy(group = g) }).map {
+                ExerciseEntry(newId(), it.exerciseId, targetSets = it.sets, targetReps = it.reps, targetWeightKg = it.weightKg, targetDurationSec = it.durationSec, group = it.group)
             },
         )
     }
@@ -184,6 +258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     reps = w.maxOfOrNull { it.reps }?.takeIf { it > 0 } ?: e.targetReps.takeIf { it > 0 } ?: 10,
                     weightKg = w.maxOfOrNull { it.weightKg } ?: e.targetWeightKg,
                     durationSec = w.maxOfOrNull { it.durationSec } ?: e.targetDurationSec,
+                    group = e.group,
                 )
             },
         )

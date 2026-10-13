@@ -196,7 +196,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit, onOpenSteps: () -> Uni
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                "TrackMyFit 1.1 · ${Stats.totalWorkouts(data)} workouts · ${data.allExercises().size} exercises\nExercise demos & instructions: free-exercise-db (public domain)",
+                "TrackMyFit 1.2 · ${Stats.totalWorkouts(data)} workouts · ${data.allExercises().size} exercises\nExercise demos & instructions: free-exercise-db (public domain) · Muscle diagram: react-body-highlighter (MIT) · Frame interpolation: RIFE (MIT)",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp),
             )
         }
